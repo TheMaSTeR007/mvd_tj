@@ -1,10 +1,14 @@
+import subprocess
+
 from scrapy.cmdline import execute
 from lxml.html import fromstring
 from datetime import datetime
 from typing import Iterable
 from scrapy import Request
+from doctor_trans import trans
 import pandas as pd
 import unicodedata
+import asyncio
 import random
 import string
 import scrapy
@@ -25,13 +29,18 @@ def df_cleaner(data_frame: pd.DataFrame) -> pd.DataFrame:
         data_frame[column] = data_frame[column].apply(remove_diacritics)  # Remove diacritics characters
         if 'title' in column:
             data_frame[column] = data_frame[column].str.replace('–', '')  # Remove specific punctuation 'dash' from name string
-            data_frame[column] = data_frame[column].str.translate(str.maketrans('', '', string.punctuation))  # Removing Punctuation from name text
+            data_frame[column] = data_frame[column].apply(remove_punctuation)  # Removing Punctuation from name text
         data_frame[column] = data_frame[column].apply(remove_extra_spaces)  # Remove extra spaces and newline characters from each column
 
     data_frame.replace(to_replace='nan', value=pd.NA, inplace=True)  # After cleaning, replace 'nan' strings back with actual NaN values
     data_frame.fillna(value='N/A', inplace=True)  # Replace NaN values with "N/A"
     print('DataFrame Cleaned...!')
     return data_frame
+
+
+# Function to remove all punctuation
+def remove_punctuation(text):
+    return text if text == 'N/A' else ''.join(char for char in text if not unicodedata.category(char).startswith('P'))
 
 
 def set_na(text: str) -> str:
@@ -48,10 +57,7 @@ def remove_extra_spaces(text: str) -> str:
 
 
 def remove_diacritics(input_str):
-    return ''.join(
-        char for char in unicodedata.normalize('NFD', input_str)
-        if not unicodedata.combining(char)
-    )
+    return ''.join(char for char in unicodedata.normalize('NFD', input_str) if not unicodedata.combining(char))
 
 
 def extract_and_format_date(input_text):
@@ -59,7 +65,8 @@ def extract_and_format_date(input_text):
     Extracts a date in 'DD.MM.YYYY HH:mm' format from a string and converts it into 'YYYY-MM-DD' format.
     """
     # Regex to match 'DD.MM.YYYY HH:mm'
-    date_match = re.search(pattern=r'(\d{2})\.(\d{2})\.(\d{4}) \d{2}:\d{2}', string=input_text)
+    # date_match = re.search(pattern=r'(\d{2})\.(\d{2})\.(\d{4}) \d{1,2}:\d{1,2}', string=input_text)
+    date_match = re.search(pattern=r'(\d{2})[\.*\s](\d{2})[\.*\s](\d{4})[\.*\s]\d{1,2}:\d{1,2}', string=input_text)
     if date_match:
         day, month, year = date_match.groups()
         try:
@@ -110,8 +117,8 @@ class MvdTjTajikistanSpider(scrapy.Spider):
         # Path to store the Excel file can be customized by the user
         self.excel_path = r"../Excel_Files"  # Client can customize their Excel file path here (default: govtsites > govtsites > Excel_Files)
         os.makedirs(self.excel_path, exist_ok=True)  # Create Folder if not exists
-        self.filename = fr"{self.excel_path}/{self.name}.xlsx"  # Filename with Scrape Date
-
+        self.filename_native = fr"{self.excel_path}/{self.name}_native.xlsx"  # Native Filename with Scrape Date
+        self.filename_translated = fr"{self.excel_path}/{self.name}_translated.xlsx"  # English Filename with Scrape Date
         self.browsers = ["chrome110", "edge99", "safari15_5"]
 
         self.cookies = {
@@ -154,7 +161,7 @@ class MvdTjTajikistanSpider(scrapy.Spider):
                                  meta={'impersonate': random.choice(self.browsers)}, cb_kwargs={'url': url, 'news_page_url': news_page_url})
 
         # Handle Pagination here
-        # if Next Page Button -> Pagination Request else Stop Pagination
+        # if Next-Page-Button -> Pagination-Request else Stop-Pagination
         next_page_url = ' '.join(parsed_tree.xpath('//span[@class="pnext"]/a/@href'))
         if next_page_url:
             print('Sending request on:', next_page_url)
@@ -182,16 +189,30 @@ class MvdTjTajikistanSpider(scrapy.Spider):
         print("Converting List of Dictionaries into DataFrame, then into Excel file...")
         try:
             print("Creating Native sheet...")
-            data_df = pd.DataFrame(self.final_data_list)
-            data_df = df_cleaner(data_frame=data_df)  # Apply the function to all columns for Cleaning
-            data_df.insert(loc=0, column='id', value=range(1, len(data_df) + 1))  # Add 'id' column at position 1
-            # data_df.set_index(keys='id', inplace=True)  # Set 'id' as index for the Excel output
-            with pd.ExcelWriter(path=self.filename, engine='xlsxwriter', engine_kwargs={"options": {'strings_to_urls': False}}) as writer:
-                data_df.to_excel(excel_writer=writer, index=False)
+            native_data_df = pd.DataFrame(self.final_data_list)
+            native_data_df = df_cleaner(data_frame=native_data_df)  # Apply the function to all columns for Cleaning
 
+            # Translate the DataFrame to English and return translated DataFrame
+            # tranlated_df = trans(data_df, input_lang='tg-TJ', output_lang='en')
+
+            with pd.ExcelWriter(path=self.filename_native, engine='xlsxwriter', engine_kwargs={"options": {'strings_to_urls': False}}) as writer:
+                native_data_df.insert(loc=0, column='id', value=range(1, len(native_data_df) + 1))  # Add 'id' column at position 1
+                native_data_df.to_excel(excel_writer=writer, index=False)
             print("Native Excel file Successfully created.")
+
+            # Run the translation script with filenames passed as arguments
+            try:
+                subprocess.run(
+                    args=["python", "translate_and_save.py", self.filename_native, self.filename_translated],  # Define the filenames as arguments
+                    check=True
+                )
+                print("Translation completed successfully.")
+            except subprocess.CalledProcessError as e:
+                print(f"Error during translation: {e}")
+
         except Exception as e:
-            print('Error while Generating Native Excel file:', e)
+            print('Error while Generating Excel file:', e)
+
         if self.api.is_connected:  # Disconnecting VPN if it's still connected
             self.api.disconnect()
             print('VPN Connected!' if self.api.is_connected else 'VPN Disconnected!')

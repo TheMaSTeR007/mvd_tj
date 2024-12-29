@@ -1,16 +1,12 @@
-import subprocess
-
 from scrapy.cmdline import execute
 from lxml.html import fromstring
 from datetime import datetime
 from typing import Iterable
 from scrapy import Request
-from doctor_trans import trans
 import pandas as pd
 import unicodedata
-import asyncio
+import subprocess
 import random
-import string
 import scrapy
 import time
 import evpn
@@ -85,12 +81,22 @@ def get_news_title(news_div) -> str:
 
 def get_image_url(news_div) -> str:
     image_url_slug_list = news_div.xpath('./div[contains(@class, "full-text")]//img/@src')
-    image_url = ' | '.join(['https://www.mvd.tj' + image_url_slug.strip() for image_url_slug in image_url_slug_list])
+    refined_image_url_list = list()
+    for image_url_slug in image_url_slug_list:
+        image_url_slug = image_url_slug.strip()
+        if image_url_slug.startswith('http'):
+            # Some image urls consist of http in starting so no need to append in url
+            refined_image_url_list.append(image_url_slug)
+        else:
+            # Some image urls does not consist of http in starting so need to append in url
+            refined_image_url_list.append('https://www.mvd.tj' + image_url_slug)
+    image_url = ' | '.join(refined_image_url_list)
     return image_url if image_url else 'N/A'
 
 
 def get_description(news_div) -> str:
-    description = ' '.join(news_div.xpath('./div[contains(@class, "full-text")]/p//text()')).strip()
+    # description = ' '.join(news_div.xpath('./div[contains(@class, "full-text")]/p//text()')).strip()
+    description = ' '.join(news_div.xpath('./div[contains(@class, "full-text")]//text()')).strip()
     return description if description != '' else 'N/A'
 
 
@@ -181,42 +187,37 @@ class MvdTjTajikistanSpider(scrapy.Spider):
         data_dict['description'] = get_description(news_div)
         data_dict['news_date'] = get_news_date(news_div)
 
-        print(data_dict)
+        # print(data_dict)
         self.final_data_list.append(data_dict)
 
     def close(self, reason):
         print('closing spider...')
-        print("Converting List of Dictionaries into DataFrame, then into Excel file...")
-        try:
-            print("Creating Native sheet...")
-            native_data_df = pd.DataFrame(self.final_data_list)
-            native_data_df = df_cleaner(data_frame=native_data_df)  # Apply the function to all columns for Cleaning
-
-            # Translate the DataFrame to English and return translated DataFrame
-            # tranlated_df = trans(data_df, input_lang='tg-TJ', output_lang='en')
-
-            with pd.ExcelWriter(path=self.filename_native, engine='xlsxwriter', engine_kwargs={"options": {'strings_to_urls': False}}) as writer:
+        if self.final_data_list:
+            try:
+                print("Creating Native sheet...")
+                native_data_df = pd.DataFrame(self.final_data_list)
+                native_data_df = df_cleaner(data_frame=native_data_df)  # Apply the function to all columns for Cleaning
                 native_data_df.insert(loc=0, column='id', value=range(1, len(native_data_df) + 1))  # Add 'id' column at position 1
-                native_data_df.to_excel(excel_writer=writer, index=False)
-            print("Native Excel file Successfully created.")
+                with pd.ExcelWriter(path=self.filename_native, engine='xlsxwriter', engine_kwargs={"options": {'strings_to_urls': False}}) as writer:
+                    native_data_df.to_excel(excel_writer=writer, index=False)
+                print("Native Excel file Successfully created.")
+            except Exception as e:
+                print('Error while Generating Native Excel file:', e)
 
             # Run the translation script with filenames passed as arguments
             try:
+                # Define the filenames as arguments with source language code
                 subprocess.run(
-                    args=["python", "translate_and_save.py", self.filename_native, self.filename_translated],  # Define the filenames as arguments
+                    args=["python", "translate_and_save.py", self.filename_native, self.filename_translated, 'tg'],
                     check=True
                 )
                 print("Translation completed successfully.")
             except subprocess.CalledProcessError as e:
                 print(f"Error during translation: {e}")
-
-        except Exception as e:
-            print('Error while Generating Excel file:', e)
-
+        else:
+            print('Final-Data-List is empty.')
         if self.api.is_connected:  # Disconnecting VPN if it's still connected
             self.api.disconnect()
-            print('VPN Connected!' if self.api.is_connected else 'VPN Disconnected!')
-
         end = time.time()
         print(f'Scraping done in {end - self.start} seconds.')
 

@@ -6,10 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="5fba0d1d-baa5-47c5-b1da-9963b6e2e1ed" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mvd_tj/Excel_Files/mvd_tj_tajikistan_native.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/mvd_tj/Excel_Files/mvd_tj_tajikistan_native.xlsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mvd_tj/Excel_Files/mvd_tj_tajikistan_translated.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/mvd_tj/Excel_Files/mvd_tj_tajikistan_translated.xlsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mvd_tj/spiders/mvd_tj_tajikistan.py" beforeDir="false" afterPath="$PROJECT_DIR$/mvd_tj/spiders/mvd_tj_tajikistan.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/mvd_tj/spiders/translate_and_save.py" beforeDir="false" afterPath="$PROJECT_DIR$/mvd_tj/spiders/translate_and_save.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
